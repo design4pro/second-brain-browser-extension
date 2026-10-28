@@ -1,3 +1,6 @@
+import { buildContent, buildTags } from '@/utils/capture';
+import { fetchVideoTranscript } from '@/utils/video';
+
 export default defineBackground(() => {
   // MV3 (Chrome) exposes browser.action; MV2 (Firefox) exposes browser.browserAction
   const action = browser.action ?? browser.browserAction;
@@ -25,6 +28,12 @@ export default defineBackground(() => {
       return;
     }
 
+    // Show pending state on badge (transcript fetching can take a few seconds)
+    action.setBadgeText({ text: '…' });
+    action.setBadgeBackgroundColor({ color: '#fd540a' });
+
+    const videoPromise = fetchVideoTranscript(tab);
+
     let selection = '';
     try {
       const [result] = await browser.scripting.executeScript({
@@ -36,13 +45,8 @@ export default defineBackground(() => {
       // Restricted page — proceed without selection
     }
 
-    const parts = [`${tab.title || 'Untitled'}\n${tab.url}`];
-    if (selection) parts.push(`Highlighted: "${selection}"`);
-    const content = parts.join('\n\n');
-
-    // Show pending state on badge
-    action.setBadgeText({ text: '…' });
-    action.setBadgeBackgroundColor({ color: '#fd540a' });
+    const video = await videoPromise;
+    const content = buildContent({ title: tab.title || 'Untitled', url: tab.url, selection, video });
 
     try {
       const res = await fetch(`${workerUrl.replace(/\/$/, '')}/capture`, {
@@ -51,7 +55,7 @@ export default defineBackground(() => {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${authToken}`,
         },
-        body: JSON.stringify({ content, source: 'extension' }),
+        body: JSON.stringify({ content, tags: buildTags(video), source: 'extension' }),
       });
 
       const data = await res.json();
@@ -64,6 +68,8 @@ export default defineBackground(() => {
           ? 'Merged with an existing memory.'
           : data.action === 'replaced'
           ? 'Updated an existing memory.'
+          : video
+          ? `"${tab.title}" saved with its transcript.`
           : `"${tab.title}" saved to your second brain.`;
         flashBadge('✓', '#18794e');
         notify(tab.id, 'Captured!', msg, 'success');
