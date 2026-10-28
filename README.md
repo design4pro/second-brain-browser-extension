@@ -22,6 +22,7 @@ The Worker is free to deploy (Cloudflare free tier), takes about 2 minutes via t
 
 - **Capture the current page** — saves the title and URL to your second brain
 - **Capture highlighted text** — select any text on a page before clicking capture; the excerpt is saved alongside the title and URL
+- **Capture video transcripts** - on YouTube and Bilibili videos the transcript (with timestamps and chapters) is saved with the page, the same way [Obsidian Web Clipper](https://github.com/obsidianmd/obsidian-clipper) does it via [Defuddle](https://github.com/kepano/defuddle)
 - **Add a note** — type context or `#hashtags` in the popup before saving; hashtags are automatically extracted as tags
 - **Quick capture** — keyboard shortcut saves the page instantly without opening any popup, with a toast confirmation
 
@@ -65,6 +66,7 @@ Temporary add-ons are removed when Firefox restarts. For a permanent install, ru
 ```bash
 pnpm dev              # live-reloading dev build in Chrome
 pnpm dev:firefox      # live-reloading dev build in Firefox
+pnpm test             # unit tests (Vitest)
 ```
 
 ### Staying up to date
@@ -101,6 +103,7 @@ Click the Second Brain icon in your toolbar (or press `Alt+Shift+B`).
 |---|---|
 | Page info | Shows the title and URL that will be captured |
 | Selection badge | Appears when text is highlighted — the excerpt will be included |
+| Transcript toggle | Appears on video pages - include or skip the video transcript |
 | Note field | Optional context to save with the capture. Use `#hashtags` to tag |
 | Capture button | Sends to your Second Brain |
 
@@ -138,6 +141,30 @@ Your note with #hashtags
 
 Hashtags in the note are extracted as tags by the Worker. The `source` field is set to `"extension"` so you can filter by it in your second brain.
 
+### Video transcripts
+
+On a video page the transcript is appended after the note, and the capture is tagged `video` plus the site (e.g. `youtube`):
+
+```
+Page title
+https://www.youtube.com/watch?v=...
+
+Your note with #hashtags
+
+Video transcript (YouTube · Channel · 2026-10-01 · en):
+[Chapter: Intro]
+[0:01] First spoken segment
+[0:07] Next segment
+```
+
+The format follows what the Worker stores:
+
+- The Worker collapses all whitespace, so every segment carries its own `[m:ss]` marker instead of relying on line breaks or Markdown.
+- The Worker turns every `#word` into a tag, so `#` is dropped from spoken hashtags in the transcript (your note keeps them).
+- A memory is capped at 128 KB (about 20,000 words). A longer transcript is cut at a segment boundary and ends with `[Transcript truncated: N of M segments saved]`.
+
+Quick capture includes the transcript automatically. Fetching it waits at most 8 seconds; if it fails or the video has no captions, the page is captured without it.
+
 ---
 
 ## Permissions
@@ -159,8 +186,12 @@ Credentials are stored in `storage.sync` — they never leave your browser excep
 wxt.config.ts             — WXT config: manifest, permissions, per-browser tweaks
 entrypoints/
   background.js           — Background: handles quick-capture command + toast injection
+  video-transcript.js     - Injected on video pages; extracts the transcript with Defuddle
   popup/                  — Capture popup UI (index.html, main.js, style.css)
   setup/                  — First-run setup and settings page
+utils/
+  capture.js              - Builds the /capture content and tags (transcript formatting, size limit)
+  video.js                - Injects video-transcript.js and waits for its result
 public/
   icon/                   — Extension icons (16/48/128)
   icons/                  — Brand SVGs used inside the UI pages (lockup + mark)
