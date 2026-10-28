@@ -211,6 +211,34 @@ body {
   overflow: hidden;
 }
 
+/* Video transcript toggle */
+.transcript-option {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  background: var(--surface-warm);
+  border: 0.5px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  margin-bottom: 9px;
+  font-size: 12px;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.transcript-option input {
+  accent-color: var(--accent);
+  margin: 0;
+}
+
+.transcript-option input:disabled + span {
+  color: var(--text-secondary);
+}
+
+.transcript-option:has(input:disabled) {
+  cursor: default;
+}
+
 /* Note input */
 .note-input {
   width: 100%;

@@ -1,3 +1,6 @@
+import { buildContent, buildTags, isVideoUrl } from '@/utils/capture';
+import { fetchVideoTranscript } from '@/utils/video';
+
 const $ = id => document.getElementById(id);
 
 const isMac = navigator.platform.toUpperCase().includes('MAC');
@@ -23,13 +26,6 @@ function showStatus(type, message) {
   el.className = `status ${type}`;
   el.textContent = message;
   el.classList.remove('hidden');
-}
-
-function buildContent(title, url, selection, note) {
-  const parts = [`${title}\n${url}`];
-  if (selection) parts.push(`Highlighted: "${selection}"`);
-  if (note) parts.push(note);
-  return parts.join('\n\n');
 }
 
 function truncate(str, max) {
@@ -71,6 +67,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     return;
   }
 
+  // Transcript fetching can take a few seconds, so it runs alongside the rest
+  const videoPromise = fetchVideoTranscript(tab);
+  showTranscriptOption(tab.url, videoPromise);
+
   // 3. Try to get selected text
   let selection = '';
   try {
@@ -97,14 +97,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // 5. Capture
   $('btn-capture').addEventListener('click', async () => {
-    const note = $('note').value.trim();
-    const content = buildContent(tab.title || 'Untitled', tab.url, selection, note);
-
     const btn = $('btn-capture');
     const label = $('btn-capture-label');
     btn.disabled = true;
     label.textContent = 'Saving…';
     $('status').classList.add('hidden');
+
+    const note = $('note').value.trim();
+    const video = $('include-transcript').checked ? await videoPromise : null;
+    const content = buildContent({ title: tab.title || 'Untitled', url: tab.url, selection, note, video });
 
     try {
       const res = await fetch(`${workerUrl.replace(/\/$/, '')}/capture`, {
@@ -113,11 +114,16 @@ document.addEventListener('DOMContentLoaded', async () => {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${authToken}`,
         },
-        body: JSON.stringify({ content, source: 'extension' }),
+        body: JSON.stringify({ content, tags: buildTags(video), source: 'extension' }),
       });
 
       if (!res.ok && res.status === 401) {
         showStatus('error', 'Auth failed — check your token in settings.');
+        return;
+      }
+
+      if (res.status === 413) {
+        showStatus('error', 'Too long to save as one memory. Shorten the note or selection.');
         return;
       }
 
@@ -145,6 +151,23 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 });
+
+async function showTranscriptOption(url, videoPromise) {
+  if (!isVideoUrl(url)) return;
+
+  const checkbox = $('include-transcript');
+  const status = $('transcript-status');
+  $('transcript-option').classList.remove('hidden');
+
+  const video = await videoPromise;
+  if (video) {
+    status.textContent = 'Include video transcript';
+    checkbox.disabled = false;
+  } else {
+    status.textContent = 'No transcript available for this video';
+    checkbox.checked = false;
+  }
+}
 
 function setupSettingsButton() {
   $('btn-settings').addEventListener('click', openSetup);
